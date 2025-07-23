@@ -39,32 +39,91 @@ editor: visual
 library(tidyverse)
 library(tidymodels)
 library(finetune) # tuning hyper parameter
-library(baguette)
 library(randomForest) # for rand forest 
 library(xgboost) # booster
 library(leaps)
-library(VIM) # for KNN to deal with na 
+library(vip) 
 
 Tinder_df <- read.csv("./data/tinder-data/Tinder_Data_v3_Clean_Edition.csv")
 #this data frame is containsing 1209 users and properties that define this user: numer of matchs, the median length of a conversation, number of swiping 'like' etc.
 
 #First and foremost, we would get read of bad instances in our dataset. specifically those user whose hasn't been active at all 
 
-Tinder_filtered <- Tinder_df |> 
-  mutate( hetero_sx =  as.factor(ifelse(
+
+
+
+
+Tinder_filtered <- Tinder_df  |> 
+  
+   
+  #Omit users that didn't open the app at all, and those how haven't engaged in it 
+  
+  filter(sum_app_opens > 0 & swipe_likes >0 & swipe_passes > 0)  |> 
+  
+  # Or those users who never engaged in a conversation
+  
+  filter(medianConversationLength > 0)  |> 
+  
+  # Factor conversions
+
+  mutate(instagram = as.factor(instagram),
+         spotify = as.factor(spotify),
+         gender= as.factor(gender)
+         ) |> 
+  
+  #Creating an heterosexual column for easier interpretation. 
+  
+    mutate( hetero_sx =  as.factor(ifelse(
    (gender == "M" & interestedIn == "F") | (gender == "F" & interestedIn == "M"),
    1,
    0
   ))) |> 
-  select(-interestedIn) |> 
+  select(-c(interestedIn))  |> 
   
-   #Omit users that didn't open the app at all, and those how haven't engaged in it 
-  filter(sum_app_opens > 0 & swipe_likes >0 & swipe_passes >0)  |> 
+  #------ Dealing with weird outliers 
+
+  # Some value in  'ageFilterMax' are set to 1000 (???), which is clearly unrealistic.
+  # Based on my (unfortunate) domain knowledge valid age value should ranges from 1 to 100. 
+  # We'll correct these by replacing 1000 with the next-highest valid age. (assuming this
+  # is an arbitrary error [ while parsing the data maybe] rather than a invalid user. and
+  #review of other user attributes of those instances supports this assumption)
   
-  mutate(instagram = as.factor(instagram),
-         spotify = as.factor(spotify),
-         gender= as.factor(gender)
-         )
+  mutate(ageFilterMax = replace(
+    ageFilterMax,
+    ageFilterMax == max(ageFilterMax, na.rm = TRUE),
+    sort(unique(ageFilterMax), decreasing = TRUE)[2]
+  )) |> 
+  
+  #The same goes for our outcome variable 'nrOfGhostingsAfterInitialMessage'
+  
+    mutate(nrOfGhostingsAfterInitialMessage = replace(
+    nrOfGhostingsAfterInitialMessage,
+    nrOfGhostingsAfterInitialMessage == max(nrOfGhostingsAfterInitialMessage,
+                                            na.rm = TRUE),
+    sort(unique(nrOfGhostingsAfterInitialMessage),
+         decreasing = TRUE)[2]
+  ))
+
+
+# there's still some outliers in our outcome variable. 
+hist(Tinder_filtered$nrOfGhostingsAfterInitialMessage)
+
+#lets try the Z score outliers detections - above 3 Standard deviation
+
+z_score_no_ghst<- scale(Tinder_filtered$nrOfGhostingsAfterInitialMessage)
+
+outliers <- Tinder_filtered$nrOfGhostingsAfterInitialMessage[abs(z_score_no_ghst) > 3]
+
+length(outliers)
+
+# only 23 instances are above/below 3 standard deviation from the average mean, I would regard those as outliers and therefore remove them 
+
+Tinder_filtered <- Tinder_filtered |> 
+  mutate(z_ghost = z_score_no_ghst) |>
+  filter(abs(z_ghost) <= 3) |> 
+  select(-z_ghost)
+  
+  
 
 # Since my models of Interest are not an OLS/GKM ones, and given that I do want to interpret the results of such modeling, I would not conduct any dimension reduction method. 
 # My models of choice would be Boosting and Random Forest. 
@@ -76,14 +135,15 @@ Tinder_filtered <- Tinder_df |>
 ```{r}
 # Data Splitting (70%):
 set.seed(130597)
-splits <- initial_split(Tinder_filtered, prop = 0.7)
+splits <- initial_split(Tinder_filtered,
+                        prop = 0.7)
 Tinder.train <- training(splits)
 Tinder.test <- testing(splits)
 
 # Cross Validation and Comparisons sets
 
 # Bootstraps Spliting
-Tinder_validation_sets <- boots_sampling <- bootstraps(
+Tinder_validation_sets <- bootstraps(
   Tinder.train,
   times = 50,
   strata = NULL,
@@ -114,11 +174,20 @@ rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
    #after visually inspecting the data frame I can say the the 'education' is not valid. I  found quite a few professionals with no education (physician fro example) 
   
   #I will omit jobTitle because I it seems that the textual analysis tool would be more sufficient in capturing the complexities of this variable  
-  step_rm(country,cityName,createDate, education) |> 
+  step_rm(country,
+          cityName,
+          createDate,
+          education,
+          jobTitle,
+          X_id,
+          birthDate) |> 
   
   
   #dealing with factors 
-  step_dummy(spotify, gender, instagram, hetero_sx) 
+  step_dummy(spotify,
+             gender,
+             instagram,
+             hetero_sx) 
   
   
 
@@ -128,16 +197,29 @@ rf_spec <- rand_forest(
   mode = "regression",
   engine = "randomForest",
   
-  #we will tune those hyper-parameters
+  #we will tune these hyper-parameters
   
   mtry = tune(),
   trees = tune(),
   min_n = 5
 )
 
+rf_wf <- workflow(preprocessor = rec, spec = rf_spec)
 
 
+rf_grid <-  grid_regular(
   
+  #Considering to computation time I would reduce the max number of predictors to 10 
+  mtry(range = c(1, 10)),
+  trees(range = c(100, 1000)),
+  levels = 5
+)
+
+rf_tuner <- tune_grid(rf_wf,
+                      resamples = Tinder_validation_sets,
+                      grid = rf_grid,
+                      metrics = mset_reg)
+#started running - 13:14
 
 ```
 
