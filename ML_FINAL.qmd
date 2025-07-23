@@ -219,7 +219,106 @@ rf_tuner <- tune_grid(rf_wf,
                       resamples = Tinder_validation_sets,
                       grid = rf_grid,
                       metrics = mset_reg)
-#started running - 13:14
+
+# ----- scheming and ploting 
+
+autoplot(rf_tuner)
+
+# it seems that the number of trees are doesn't increase the model's performance gradually.
+# given that the margin between does values of the hyper parameter 'number of tree' I would chose it using the select_by_one_std_err.
+
+
+best_of_trees<- select_by_one_std_err(rf_tuner, trees, metric = "rsq")
+# tree= 100
+#mtry= 7
+
+best_of_predictors<- select_by_one_std_err(rf_tuner, mtry, metric = "rsq")
+#tree = 325
+#mtry = 5
+
+# Looking at the y-axis (R²), the improvement from 100 to 325 trees isn't marginal — 
+# less than 0.02 increase in R² — despite more than tripling the number of trees.
+# In my view, this gain doesn't justify the added computational cost.
+# 
+# Therefore, the selected hyperparameters are:
+# trees = 100
+# mtry = 5 
+
+hp_rnd_best <- tibble(
+  trees = 100,
+  mtry = 5
+)
+
+
+
+##------- Training and Fitting -------
+
+rf_fit <- rf_wf |>
+  finalize_workflow(parameters = hp_rnd_best) |> 
+  fit(data = Tinder.train)
+rf_fit 
+
+# Performance on training set: 
+# Mean of squared residuals: 449.1373
+# Var explained: 64.32%
+
+## ------Fit the Test Bootstrap --------
+
+rf_test_comp <- fit_resamples(rf_fit,
+                            resamples = Tinder_comparison_sets,
+                            metrics = mset_reg)
+
+
+
+#--------------------------  Spec- Booster 
+boost_spec <- boost_tree(
+  mode = "regression",
+  engine = "xgboost",
+  
+  ## Complexity
+  tree_depth = tune(), # [1, Inf] limits the depth of each tree
+  min_n = 5, # [1, Inf] don't split if you get less obs in a node
+  
+  
+  loss_reduction = 0, # [0, Inf] node splitting regularization - no need for regulation since I will keep tree depth at 1 
+  
+  ## Gradient
+  learn_rate = 0.1, # [0, 1] learning rate
+  trees = tune(),
+  
+  ## Randomness
+  mtry = 5,  # to help me comparing with Random Forest model and since it is close to the theoretical recommendation when it come to regression sqrt(p)
+  sample_size = tune() # [0, 1] proportion of random data to use in each tree
+)
+
+
+
+booester_grid <-  expand_grid(
+  trees= seq(100, 2000, by = 100),
+  sample_size =  seq(0, 1, by = 0.1),
+  tree_depth= c(1,2,3)
+  )
+booster_wf <- workflow(preprocessor = rec,
+                       spec = boost_spec)
+# Tune 
+
+booster_tuner <- tune_grid(booster_wf,
+                      resamples = Tinder_validation_sets,
+                      grid = booester_grid,
+                      metrics = mset_reg)
+autoplot(booster_tuner) 
+
+select_by_one_std_err(booster_tuner,sample_size, metric ="rsq")
+select_by_one_std_err(booster_tuner,trees, metric ="rsq")
+
+
+
+# 1st option
+# dpeth = 3 
+# trees= 400
+# sample_size = 0.6
+
+# R2 = 0.7239298
 
 ```
 
