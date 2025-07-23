@@ -9,40 +9,306 @@ editor: visual
 ---
 
 ## מבוא כללי
+שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder. 
 
-המחקר הנוכחי מהווה את החלק הראשון בפרויקט שמטרתו לבחון האם החפצה מינית של נשים עשויה לפגוע בגבר המבצע את ההחפצה. שלב זה מתמקד בעיקר בהיבטים קוגניטיביים ותפקודיים של הנבדקים ונערך באופן מקוון, תוך שימוש בגירוי ווידאו יחיד.
+את מאגר הנתונים לקחנו מתוך האתר kaggle.   של המשתמש ashleyxu98
+לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר.
 
-במסגרת המחקר, הנבדקים יתבקשו לצפות בסרטון עיוני באורך של כשלוש דקות, שבו מופיעה אישה אשר מעבירה תוכן דידקטי. בטרם הצפייה, הנבדקים יקבלו הנחיה כי יישאלו שאלות על תוכן הסרטון בהמשך ויוכלו לזכות בבונוס כספי בהתאם לרמת ההצלחה.
+מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים.
 
-הווידאו מצולם בפריים רחב הכולל את גופה המלא של האישה. במהלך הצפייה, ינוטרו תנועות העיניים של הנבדקים באמצעות תוכנת RealEye. הנבדקים יקבלו הסבר לפיו הניטור נעשה כדי לוודא שהם מתמקדים בסרטון ולא מוסחים מגורמים חיצוניים.  
+הסט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה.
 
-לאחר הצפייה בסרטון, הנבדקים יבצעו מטלת השלמת מילים, שבה יוצגו להם מילים חסרות אות אחת. חלק מהמילים מאפשרות השלמה למונחים בעלי קונוטציה מינית, בעוד אחרות נותרות ניטרליות. מטלה זו נועדה להעריך רמות אקטיבציה מינית סמויות.
+עבודה זו תבחן האם הנטיה לעשות למישהו גוסטינג( ניתוק קשר ללא התראה מוקדמת) יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה, או נתונים דמוגרפים כלשהן.
 
-לאחר מכן, הנבדקים ישיבו על שאלות הערכה שונות, הנוגעות בין היתר לתחושת הביטחון העצמי שלהם בביצוע מטלת הזיכרון, ציפיות למפגש עם האישה בווידאו, התרשמותם מהאישה (למשל, מידת האטרקטיביות, יכולת, אסרטיביות, וכדומה), ולתחושותיהם ביחס אליה (קירבה, חיבה ודמיון)
 
-לבסוף,  הנבדקים יתבקשו למלא שאלון תכונתי הבוחן את הנטייה להחפצה (תוקף במחקר קודם), מידע דמוגרפי, וכן שאלות טכניות בנוגע לחוויית ההשתתפות.
 
-מטרת עבודה זו היא לבחון האם ניתן לנבא את דפוסי ההסתכלות של נבדקים על סמך תשובותיהם של נבדקים בסקר. באופן ספציפי, האם ניתן לנבא משך ההתמקדות בחזה של השחקנית מתוך צפיות למפגש,התרשמותם ותחושותיהם.
 
-על מנת לעשות זאת אני אשתמש ב-2 שיטות מידול שונות, השיטה הראשונה השיטת Booster לעצי רגרסיה
 
-וושיטת המידול השניה תהינה random Forest.
 
-המנבאים שלי יבחרו על ידי שיטת Best subset selection
 
-לאחר מכן אבחן אלטרנטיקה של שימוש ב PLS על מנת לבחור את לצמצם את הממדים של המודל.
+
+
+
+
+
+
+##Pre-Processing 
 
 ```{r}
 #Packages loading:
-
+library(tidyverse)
 library(tidymodels)
-library(finetune)
+library(finetune) # tuning hyper parameter
 library(baguette)
-library(randomForest)
-library(xgboost)
+library(randomForest) # for rand forest 
+library(xgboost) # booster
+library(leaps)
+library(VIM) # for KNN to deal with na 
+
+Tinder_df <- read.csv("./data/tinder-data/Tinder_Data_v3_Clean_Edition.csv")
+#this data frame is containsing 1209 users and properties that define this user: numer of matchs, the median length of a conversation, number of swiping 'like' etc.
+
+#First and foremost, we would get read of bad instances in our dataset. specifically those user whose hasn't been active at all 
+
+Tinder_filtered <- Tinder_df |> 
+  mutate( hetero_sx =  as.factor(ifelse(
+   (gender == "M" & interestedIn == "F") | (gender == "F" & interestedIn == "M"),
+   1,
+   0
+  ))) |> 
+  select(-interestedIn) |> 
+  
+   #Omit users that didn't open the app at all, and those how haven't engaged in it 
+  filter(sum_app_opens > 0 & swipe_likes >0 & swipe_passes >0)  |> 
+  
+  mutate(instagram = as.factor(instagram),
+         spotify = as.factor(spotify),
+         gender= as.factor(gender)
+         )
+
+# Since my models of Interest are not an OLS/GKM ones, and given that I do want to interpret the results of such modeling, I would not conduct any dimension reduction method. 
+# My models of choice would be Boosting and Random Forest. 
+
+```
+
+## Modeling
+
+```{r}
+# Data Splitting (70%):
+set.seed(130597)
+splits <- initial_split(Tinder_filtered, prop = 0.7)
+Tinder.train <- training(splits)
+Tinder.test <- testing(splits)
+
+# Cross Validation and Comparisons sets
+
+# Bootstraps Spliting
+Tinder_validation_sets <- boots_sampling <- bootstraps(
+  Tinder.train,
+  times = 50,
+  strata = NULL,
+  apparent = F
+)
+
+Tinder_comparison_sets <- bootstraps(
+  Tinder.test,
+  times = 50,
+  strata = NULL,
+  apparent = F
+)
+
+#the predictions would be evaluated using R2 and MAE
+
+mset_reg <- metric_set(rsq, mae)
+
+# ---------------- Recipe-------------------
+
+# let's define the models R
+
+# Predicting number of ghosting after initial message:
+
+rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
+              data = Tinder_filtered) |> 
+   #for our purposes we would omit some demographics that are not of high intrests for us,   since we would like to examine patterns across nationalities and times.
+  
+   #after visually inspecting the data frame I can say the the 'education' is not valid. I  found quite a few professionals with no education (physician fro example) 
+  
+  #I will omit jobTitle because I it seems that the textual analysis tool would be more sufficient in capturing the complexities of this variable  
+  step_rm(country,cityName,createDate, education) |> 
+  
+  
+  #dealing with factors 
+  step_dummy(spotify, gender, instagram, hetero_sx) 
+  
+  
+
+# -------------------------  Spec- Random Forest ------------------
+
+rf_spec <- rand_forest(
+  mode = "regression",
+  engine = "randomForest",
+  
+  #we will tune those hyper-parameters
+  
+  mtry = tune(),
+  trees = tune(),
+  min_n = 5
+)
 
 
-realeye <-read.csv("data/june_03/study-eye-tracking_study-bb4e80e4-c1e9-49dc-8438-79b88be60a9a-aoi-metrics-per-participant.csv")
+
+  
+
+```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+## בחירת מנבאים
+ 
+ 
+```{r}
+#After tidying our dataset we can get started 
+ 
+# Splitting 
+set.seed(1234)
+
+   
+# It seems that the text in the data frame has caused troubles, so I'll omits this version for now because it creates linear dependencies (?why? IDK)
+
+finalize_df_without_text <- finalize_df |> 
+  select(-text) 
+   
+
+splits <- initial_split(finalize_df_without_text, prop = 0.7)
+OBJ.train <- training(splits)
+OBJ.test <- testing(splits)
+
+# Validation set:
+# due to small data set size I would choose LOO-CV method for the tuning phase 
+
+loo_validation <- loo_cv(OBJ.train)
+
+
+#Comparison test sets
+
+loo_comp <- loo_cv(OBJ.test)
+
+
+
+#--------Defing the measures
+#since this is regression problem (our Dv is the duration of objectification gaze; chest - face = dwell_chest_minus_face_wide_DV) weֿ'll asses the model's performance using R2 and MAE. 
+
+mset_reg <- metric_set(rsq, mae)
+
+
+# Selecting the Variables - Best Subset selection 
+
+#-------------------------------------------------------------- 
+full_obj_regsubset <- regsubsets(obj_indx_DV ~ .,    data = OBJ.train)
+#---------------------------------------------------------------
+ 
+# Warning: 3  linear dependencies foundReordering variables and trying again:
+
+# ----finding the dependencies 
+
+ alias(lm(dwell_chest_minus_face_DV ~ ., data = OBJ.train))
+
+# It seems that all the dependencies are due to demographic information, it makes sense. For example, someone whose Native Language is Arabic is most likely Muslim 
+
+# for now I will continue with Best Subset selection method and see what's going on, I will consider Dimension reduction next...
+
+
+# ---------the Best Subsets
+
+full_obj_regsubset_summary<-summary(full_obj_regsubset)
+# I would use Matan's code to get a cleaner look at the the results of the best subsets
+
+reg.summary_df <- data.frame(nv = 1:9, full_obj_regsubset_summary[2:6]) |> 
+  pivot_longer(cols = -nv, 
+               names_to = "Index", 
+               values_to = "value") |> 
+  group_by(Index) |> 
+  mutate(
+    is_best = 
+      value == ifelse(Index %in% c("rsq", "adjr2"), max(value), min(value))
+  )
+
+ggplot(reg.summary_df, aes(nv, value)) +
+  facet_wrap(~Index, scales = "free", ncol = 3) +
+  geom_line() +
+  geom_point(aes(shape = is_best), size = 3, fill = "red") +
+  scale_shape_manual("Best?", values = c(20, 23)) + 
+  scale_x_continuous(breaks = 1:19, minor_breaks = NULL)
+
+## we see that R2 increases from 0% for 1-variable model, to  25%, for 9-variables model. 
+
+#It is no surprising that R2 increase as the predictors number increase. I would go with Adj-R2 indication that 6 predictors are the best number of predictors.
+
+
+# and the predictors are: 
+
+coef(full_obj_regsubset, id = 6)
+
+# Meeting Expectations
+# Confidence level
+# Liking 
+# Perceived Attractiveness 
+# Age 
+# Religion - Being Secular 
+
+#----------------- Testing the Subset on test set ----------- 
+
+# Using matan function: 
+
+predict.regsubsets <- function (object, newdata, id = NULL, 
+                                select = c("adjr2", "cp", "bic")) {
+  cl <- object$call
+  cl[[1]] <- quote(stats::lm)
+  cl[!names(cl) %in% c(formalArgs(stats::lm), "")] <- NULL
+  lm_object <- eval.parent(cl)
+  
+  X_newdata <- model.matrix(terms(lm_object), newdata, 
+                            contrasts.arg = object$contrasts)
+  
+  if (is.null(id)) {
+    select <- match.arg(select)
+    v <- summary(object)[[select]]
+    id <- switch (select,
+                  adjr2 = which.max(v),
+                  cp = ,
+                  bic = which.min(v)
+    )
+  }
+  
+  b <- coef(object, id = id)
+  
+  as.vector(X_newdata[, names(b), drop = FALSE] %*% b)
+}
+
+OBJ.test$pred_bss <- predict(full_obj_regsubset,
+                             newdata = OBJ.test,
+                             id =6) 
+
+# R2 =0.26 on test set! 
+
+
+# according to best subset selection the predictors are Meeting Expectations, Confidence level, Liking, Perceived Attractiveness, Age ,Religion. 
+
+# this would be the preditors I would go with in the nexts models. 
+
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+
+
+# -------- Random Forest ---
+
+# Defining the specs 
+
+
+ 
 ```
