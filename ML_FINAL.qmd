@@ -101,7 +101,9 @@ Tinder_comparison_sets <- bootstraps(
 
 mset_reg <- metric_set(rsq, mae)
 
-# let's define the models rec
+# ---------------- Recipe-------------------
+
+# let's define the models R
 
 # Predicting number of ghosting after initial message:
 
@@ -119,6 +121,19 @@ rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
   step_dummy(spotify, gender, instagram, hetero_sx) 
   
   
+
+# -------------------------  Spec- Random Forest ------------------
+
+rf_spec <- rand_forest(
+  mode = "regression",
+  engine = "randomForest",
+  
+  #we will tune those hyper-parameters
+  
+  mtry = tune(),
+  trees = tune(),
+  min_n = 5
+)
 
 
 
