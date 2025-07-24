@@ -478,6 +478,47 @@ Booster_rnds_metrics_com |>
 
 
 ```{r}
+#DDR
+
+library(text)
+library(quanteda)
+
+#First things First, Is to make our corpus, done using the jobTitle column.
+
+ sum(Tinder_filtered$jobTitle == "unknown")
+#[1] 576 
+ 
+ nrow(Tinder_filtered) -  sum(Tinder_filtered$jobTitle == "unknown")
+#[1] 335
+ 
+ #That leaves us with only 335 informative users that hat a job Title 
+ 
+ 
+ ## ------ IMPORTANT -------
+#To proceed with text-based analysis, I will exclude all users without a valid job title (jobTitle == "unknown").
+ 
+# However, this significantly reduces the sample size, making direct comparison with previous models invalid, as those were trained on the full dataset.
+# 
+# Because of this, I will restart the entire pipeline—including preprocessing, feature engineering, hyperparameter tuning, modeling, performance evaluation, and VIP analysis—based only on the reduced dataset.
+
+ 
+ #would run VIP on the previous models last. 
+
+ 
+ #------- Pre-processing---------- 
+ 
+Tinder_filtered_for_txt <- Tinder_filtered |> 
+   # Filtering out the 'unknown' users
+
+  filter(jobTitle != "unknown")  |> 
+   # Assuming that users with 'False' jobTitle are those that manually chose 'false' indicating that they are unemployed 
+   mutate(jobTitle = ifelse(jobTitle == "False",
+                 "unemployed",
+                 jobTitle))
+ 
+ 
+ 
 
 
+ 
 ```
