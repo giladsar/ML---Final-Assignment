@@ -9,10 +9,10 @@ editor: visual
 ---
 
 ## מבוא כללי
-שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder. 
 
-את מאגר הנתונים לקחנו מתוך האתר kaggle.   של המשתמש ashleyxu98
-לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר.
+שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder.
+
+את מאגר הנתונים לקחנו מתוך האתר kaggle. של המשתמש ashleyxu98 לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר.
 
 מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים.
 
@@ -20,19 +20,7 @@ editor: visual
 
 עבודה זו תבחן האם הנטיה לעשות למישהו גוסטינג( ניתוק קשר ללא התראה מוקדמת) יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה, או נתונים דמוגרפים כלשהן.
 
-
-
-
-
-
-
-
-
-
-
-
-
-##Pre-Processing 
+##Pre-Processing
 
 ```{r}
 #Packages loading:
@@ -219,178 +207,277 @@ rf_tuner <- tune_grid(rf_wf,
                       resamples = Tinder_validation_sets,
                       grid = rf_grid,
                       metrics = mset_reg)
-#started running - 13:14
 
-```
+# ----- scheming and ploting 
 
+autoplot(rf_tuner)
 
-
-
-
-
+# it seems that the number of trees are doesn't increase the model's performance gradually.
+# given that the margin between does values of the hyper parameter 'number of tree' I would chose it using the select_by_one_std_err.
 
 
+best_of_trees<- select_by_one_std_err(rf_tuner, trees, metric = "rsq")
+# tree= 100
+#mtry= 7
 
+best_of_predictors<- select_by_one_std_err(rf_tuner, mtry, metric = "rsq")
+#tree = 325
+#mtry = 5
 
+# Looking at the y-axis (R²), the improvement from 100 to 325 trees isn't marginal — 
+# less than 0.02 increase in R² — despite more than tripling the number of trees.
+# In my view, this gain doesn't justify the added computational cost.
+# 
+# Therefore, the selected hyperparameters are:
+# trees = 100
+# mtry = 5 
 
-
-
-
-
-
- 
- 
-## בחירת מנבאים
- 
- 
-```{r}
-#After tidying our dataset we can get started 
- 
-# Splitting 
-set.seed(1234)
-
-   
-# It seems that the text in the data frame has caused troubles, so I'll omits this version for now because it creates linear dependencies (?why? IDK)
-
-finalize_df_without_text <- finalize_df |> 
-  select(-text) 
-   
-
-splits <- initial_split(finalize_df_without_text, prop = 0.7)
-OBJ.train <- training(splits)
-OBJ.test <- testing(splits)
-
-# Validation set:
-# due to small data set size I would choose LOO-CV method for the tuning phase 
-
-loo_validation <- loo_cv(OBJ.train)
-
-
-#Comparison test sets
-
-loo_comp <- loo_cv(OBJ.test)
+hp_rnd_best <- tibble(
+  trees = 100,
+  mtry = 5
+)
 
 
 
-#--------Defing the measures
-#since this is regression problem (our Dv is the duration of objectification gaze; chest - face = dwell_chest_minus_face_wide_DV) weֿ'll asses the model's performance using R2 and MAE. 
+##------- Training and Fitting -------
 
-mset_reg <- metric_set(rsq, mae)
+rf_fit <- rf_wf |>
+  finalize_workflow(parameters = hp_rnd_best) |> 
+  fit(data = Tinder.train)
+rf_fit 
 
+# Performance on training set: 
+# Mean of squared residuals: 449.1373
+# Var explained: 64.32%
 
-# Selecting the Variables - Best Subset selection 
+## ------Fit the Test Bootstrap --------
 
-#-------------------------------------------------------------- 
-full_obj_regsubset <- regsubsets(obj_indx_DV ~ .,    data = OBJ.train)
-#---------------------------------------------------------------
- 
-# Warning: 3  linear dependencies foundReordering variables and trying again:
-
-# ----finding the dependencies 
-
- alias(lm(dwell_chest_minus_face_DV ~ ., data = OBJ.train))
-
-# It seems that all the dependencies are due to demographic information, it makes sense. For example, someone whose Native Language is Arabic is most likely Muslim 
-
-# for now I will continue with Best Subset selection method and see what's going on, I will consider Dimension reduction next...
+rf_test_comp <- fit_resamples(rf_fit,
+                            resamples = Tinder_comparison_sets,
+                            metrics = mset_reg)
 
 
-# ---------the Best Subsets
 
-full_obj_regsubset_summary<-summary(full_obj_regsubset)
-# I would use Matan's code to get a cleaner look at the the results of the best subsets
+#--------------------------  Spec- Booster 
+boost_spec <- boost_tree(
+  mode = "regression",
+  engine = "xgboost",
+  
+  ## Complexity
+  tree_depth = tune(), # [1, Inf] limits the depth of each tree
+  min_n = 5, # [1, Inf] don't split if you get less obs in a node
+  
+  
+  loss_reduction = 0, # [0, Inf] node splitting regularization - no need for regulation since I will keep tree depth at 1 
+  
+  ## Gradient
+  learn_rate = 0.1, # [0, 1] learning rate
+  trees = tune(),
+  
+  ## Randomness
+  mtry = 5,  # to help me comparing with Random Forest model and since it is close to the theoretical recommendation when it come to regression sqrt(p)
+  sample_size = tune() # [0, 1] proportion of random data to use in each tree
+)
 
-reg.summary_df <- data.frame(nv = 1:9, full_obj_regsubset_summary[2:6]) |> 
-  pivot_longer(cols = -nv, 
-               names_to = "Index", 
-               values_to = "value") |> 
-  group_by(Index) |> 
-  mutate(
-    is_best = 
-      value == ifelse(Index %in% c("rsq", "adjr2"), max(value), min(value))
+booster_wf <- workflow(preprocessor = rec,
+                       spec = boost_spec)
+
+booester_grid <-  expand_grid(
+  trees= seq(100, 2000, by = 100),
+  sample_size =  seq(0, 1, by = 0.1),
+  tree_depth= c(1,2,3)
   )
 
-ggplot(reg.summary_df, aes(nv, value)) +
-  facet_wrap(~Index, scales = "free", ncol = 3) +
-  geom_line() +
-  geom_point(aes(shape = is_best), size = 3, fill = "red") +
-  scale_shape_manual("Best?", values = c(20, 23)) + 
-  scale_x_continuous(breaks = 1:19, minor_breaks = NULL)
+# Tune 
 
-## we see that R2 increases from 0% for 1-variable model, to  25%, for 9-variables model. 
+booster_tuner <- tune_grid(booster_wf,
+                      resamples = Tinder_validation_sets,
+                      grid = booester_grid,
+                      metrics = mset_reg)
 
-#It is no surprising that R2 increase as the predictors number increase. I would go with Adj-R2 indication that 6 predictors are the best number of predictors.
+autoplot(booster_tuner)
 
 
-# and the predictors are: 
 
-coef(full_obj_regsubset, id = 6)
 
-# Meeting Expectations
-# Confidence level
-# Liking 
-# Perceived Attractiveness 
-# Age 
-# Religion - Being Secular 
+# It seems that depth= 1 is the worst! So lets comapred depth =2 and depth =3
 
-#----------------- Testing the Subset on test set ----------- 
 
-# Using matan function: 
 
-predict.regsubsets <- function (object, newdata, id = NULL, 
-                                select = c("adjr2", "cp", "bic")) {
-  cl <- object$call
-  cl[[1]] <- quote(stats::lm)
-  cl[!names(cl) %in% c(formalArgs(stats::lm), "")] <- NULL
-  lm_object <- eval.parent(cl)
+
+select_by_one_std_err(booster_tuner,tree_depth, metric ="rsq")
+
+#Based on this, it appears that the optimal tree depth is 2. Increasing the depth by one additional level does not lead to a meaningful improvement in performance (in a practical, not statistical, sense).
+
+# I will retune the model !
   
-  X_newdata <- model.matrix(terms(lm_object), newdata, 
-                            contrasts.arg = object$contrasts)
+boost_wf_with_depth <- booster_wf |> 
+  finalize_workflow(parameters = tibble(tree_depth = 2))
+
+booester_grid_wthout_dpth <-  expand_grid(
+  trees= seq(100, 2000, by = 100),
+  sample_size =  seq(0, 1, by = 0.1)  
+  )
+
+booster_retuner <- tune_grid(boost_wf_with_depth,
+                      resamples = Tinder_validation_sets,
+                      grid = booester_grid_wthout_dpth,
+                      metrics = mset_reg)
+
+select_by_one_std_err(booster_retuner,sample_size, metric ="rsq")
+# sample_size =0.6
+#trees =1200 
+select_by_one_std_err(booster_retuner,trees, metric ="rsq")
+# sample_size = 0.9
+#trees =800 
+
+#which one is better 
+autoplot(booster_retuner)
+
+
   
-  if (is.null(id)) {
-    select <- match.arg(select)
-    v <- summary(object)[[select]]
-    id <- switch (select,
-                  adjr2 = which.max(v),
-                  cp = ,
-                  bic = which.min(v)
-    )
-  }
+collect_metrics(booster_retuner) |> 
+  filter(.metric== "rsq",
+         sample_size == '0.9',
+         trees== 800) |> 
+    select(mean)
+  #[1] 0.7184713
+ collect_metrics(booster_retuner) |> 
+  filter(.metric== "rsq",
+         sample_size == '0.6',
+         trees== 1200) |> 
+    select(mean)
+   #[1] 0.7179188
+ 
+ #Well I'll go with lower trees, the risk of overfitting seems low given that the depth is only 2,  which is inherently a strong regularizer given that the sample size is 0.9.
   
-  b <- coef(object, id = id)
+hp_boost_best <- tibble(
+  trees = 800,
+  tree_depth = 2,
+  sample_size = 0.9
+)
+
+##------- Training and Fitting -------
+
+boost_fit <- booster_wf |>
+  finalize_workflow(parameters = hp_boost_best) |> 
+  fit(data = Tinder.train)
+boost_fit 
+
+boost_pred<- predict(boost_fit, Tinder.train) |> 
+  bind_cols(Tinder.train)
+
+ rsq(boost_pred,
+     truth =nrOfGhostingsAfterInitialMessage ,
+     estimate = .pred)
+
+
+# Performance on training set: 
+#RMSE:  3.725146
+# Var explained: 98% - probably overfitting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+ 
+ ## ------Fit the Test Bootstrap --------
+
+booster_test_comp <- fit_resamples(boost_fit,
+                            resamples = Tinder_comparison_sets,
+                            metrics = mset_reg)
+
+
+#--------------- Comparison - Full Test Set
+Tinder.test_rndf.pred <- augment(rf_fit, Tinder.test)
+Tinder.test_boost.pred <- augment(boost_fit, Tinder.test)
+
+bind_rows(
+  "rf" = Tinder.test_rndf.pred,
+  "boosting" = Tinder.test_boost.pred, 
   
-  as.vector(X_newdata[, names(b), drop = FALSE] %*% b)
-}
-
-OBJ.test$pred_bss <- predict(full_obj_regsubset,
-                             newdata = OBJ.test,
-                             id =6) 
-
-# R2 =0.26 on test set! 
+  .id = "Model"
+) |> 
+  group_by(Model) |> 
+  mset_reg(nrOfGhostingsAfterInitialMessage, .pred)
 
 
-# according to best subset selection the predictors are Meeting Expectations, Confidence level, Liking, Perceived Attractiveness, Age ,Religion. 
+#   Model    .metric .estimator .estimate
+#   <chr>    <chr>   <chr>          <dbl>
+# 1 boosting rsq     standard       0.688
+# 2 rf       rsq     standard       0.658
+# 3 boosting mae     standard      10.2  
+# 4 rf       mae     standard      10.6  
 
-# this would be the preditors I would go with in the nexts models. 
+# On average, Random Forest predicts the number of ghosting instances with an error of ±10.2, whereas Boosting’s error is ±10.6.
+
+#So while Boosting captures the overall pattern in the data slightly better, Random Forest produces more accurate individual predictions.
+
+
+
+# comparison using Bootstraps
+
+
+Booster_rnds_metrics_com <- bind_rows(
+  "rf" = collect_metrics(rf_test_comp, summarize = FALSE),
+  "boosting" = collect_metrics(booster_test_comp, summarize = FALSE),
+  
+  .id = "Model"
+) |>
+  mutate(
+    Model = factor(Model, levels = c("rf", "boosting"))
+  )
+
+
+Booster_rnds_metrics_com |>
+  group_by(id, .metric) |>
+  mutate(
+    best_model = case_match(.metric,
+                            "mae" ~ Model[which.min(.estimate)],
+                            "rsq" ~ Model[which.max(.estimate)])
+  ) |>
+  ggplot(aes(Model, .estimate, color = Model)) +
+  facet_wrap(facets = vars(.metric), scales = "free") +
+  stat_summary(size = 1, 
+               position = position_nudge(0.1), 
+               show.legend = FALSE) + 
+  geom_point() +
+  geom_line(aes(group = id, color = best_model))
+
+
+#Visually, Boosting appears to have lower variance in MAE compared to Random Forest.
+# However, it's hard to determine whether Random Forest has more bootstrap samples where it outperforms Boosting on MAE.
+
+# In contrast, when looking at R², although the variance is similar between models, Boosting clearly outperforms Random Forest in a greater number of samples.
+
+
+#When considering standard deviation:
+
+Booster_rnds_metrics_com |>
+  filter(.metric == "rsq") |>
+  pivot_wider(names_from = "Model", values_from = ".estimate") |>
+  mutate(
+    diff = rf - boosting
+  ) |>
+  summarise(
+    mean_diff = mean(diff),
+    std_err = sd(diff),
+    .lower = mean_diff - 2 * std_err,
+    .upper = mean_diff + 2 * std_err
+  )
+
+#Unfortunatly this difference is not significance and in bound whitin the uncertainty area
 
 
 ```
 
 
 
+#Texual Anaylsis
 
+פיצ׳ר אפשרי אשר מגלם ניתוח טקסט הינו ה״מקצוע״ , בערך למחצית מהנתונים יש ג׳וב טייטל.
 
+אני אבחן כאשר מכניסים פי׳צר אשר עומד את המרחק הסמנטי של המקצוע מושגי הנדסה (אשר יהווה פרוקסי לעד כמה המקצוע קשור להנדסה) האם נוכל לשפר את הניבוי של מספר גוסטינג. 
 
+שיטה: DDR
 
 
 ```{r}
 
 
-
-# -------- Random Forest ---
-
-# Defining the specs 
-
-
- 
 ```
