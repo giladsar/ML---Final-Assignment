@@ -118,12 +118,131 @@ Tinder_filtered <- Tinder_filtered |>
 
 ```
 
+
+```{r}
+
+#Adding 'engineer' feature! - the Cosine squish to engineer in jobTitle
+
+library(text)
+library(quanteda)
+library(embedplyr)
+#First things First, Is to make our corpus, done using the jobTitle column.
+
+ sum(Tinder_filtered$jobTitle == "unknown")
+#[1] 576 
+ 
+ nrow(Tinder_filtered) -  sum(Tinder_filtered$jobTitle == "unknown")
+#[1] 335
+ 
+ #That leaves us with only 335 informative users that hat a job Title 
+ 
+
+ 
+ 
+ #------- Pre-processing---------- 
+ 
+Tinder_filtered_for_txt <- Tinder_filtered |> 
+   # Filtering out the 'unknown' users
+
+  filter(jobTitle != "unknown")  |> 
+   # Assuming that users with 'False' jobTitle are those that manually chose 'false' indicating that they are unemployed 
+   mutate(jobTitle = ifelse(jobTitle == "False",
+                 "unemployed",
+                 jobTitle))
+ 
+# Creating the corpus
+Tinder_job_corpus <- Tinder_filtered_for_txt |>
+  corpus(docid_field = "X_id",
+         text_field="jobTitle")
+
+ 
+# Convert to Tokens
+
+# * The tokens are lower-cased! 
+
+Tinder_job_tokens <- tokens(Tinder_job_corpus,
+                         remove_punct = TRUE,
+                         remove_symbols = T) |> 
+  tokens_tolower()
+
+# ------------ Should we Stem or Lemmas? 
+
+# Since we're working with job titles—short phrases rather than full sentences with contextual information—we're less likely to encounter grammatical word variations (like verbs ending in "ing" or "ed").
+# Therefore, I don’t see a strong reason to apply stemming or lemmatization in this case.
+
+
+# --- Preperation to Word-Embedding 
+
+Tinder_job_tokens_dfm <- dfm(Tinder_job_tokens)
+
+#Getting the features from jobTitle. aka unique word.
+Tinder_jobtitle_features <- featnames(Tinder_job_tokens_dfm)
+
+# ----- Word Embedding\
+
+
+#Since that our corpus is not Rich textually speaking we would use a rather small-traiend-model: glove.6B.50d - trained on Wikipedia 2014 + Giga word 5 
+
+Tinder_jobTitle_WEmodel <- load_embeddings(
+  "glove.6B.50d",
+  words = Tinder_jobtitle_features,
+  format = "rds",
+  dir= "./rds")
+
+# ./rds/glove.6B.50d.rds were created 
+
+#Using this model, we would embedd our corpus (Tinder job titles):
+Tinder_embbd_GloVe <- Tinder_job_tokens_dfm |> 
+textstat_embedding(Tinder_jobTitle_WEmodel)
+
+missing_words <- setdiff(Tinder_jobtitle_features, rownames(Tinder_jobTitle_WEmodel))
+
+# 28 instance were dismissed - jobTitle was a typo. For example: "programmerare", "salesperon", "rechtsreferendar".
+
+
+# ----------Cosine Squished ------
+
+#Getting the directorial position of the word "Engineer"
+engineer_embedding <- predict(Tinder_jobTitle_WEmodel,
+                                "engineer") 
+
+
+  
+Tinder_distantce_engineer_WEGloVe <- Tinder_embbd_GloVe |> 
+  get_sims(
+    dim_1:dim_50, 
+    list(engineer = engineer_embedding),
+    method = "cosine_squished"
+    )
+  
+
+
+#Let's add this distnace to our dataset and conduct the modeling! 
+
+Tinder_filtered_for_txt_with_cosine <- Tinder_filtered_for_txt |> 
+  merge(Tinder_distantce_engineer_WEGloVe,
+        by.x ="X_id",
+        by.y = "doc_id") |> 
+  
+  #Also, omitting the instances where jobTitle is typo - the only NA in 'engineer' 
+  filter(!is.na(engineer))
+
+
+#That's leaving us with 321 users! 
+
+```
+
+
+
+
+
+
 ## Modeling
 
 ```{r}
 # Data Splitting (70%):
 set.seed(130597)
-splits <- initial_split(Tinder_filtered,
+splits <- initial_split(Tinder_filtered_for_txt_with_cosine,
                         prop = 0.7)
 Tinder.train <- training(splits)
 Tinder.test <- testing(splits)
@@ -157,7 +276,7 @@ mset_reg <- metric_set(rsq, mae)
 
 rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
               data = Tinder_filtered) |> 
-   #for our purposes we would omit some demographics that are not of high intrests for us,   since we would like to examine patterns across nationalities and times.
+   #for our purposes we would omit some demographics that are not of high interests for us,   since we would like to examine patterns across nationalities and times.
   
    #after visually inspecting the data frame I can say the the 'education' is not valid. I  found quite a few professionals with no education (physician fro example) 
   
@@ -212,29 +331,37 @@ rf_tuner <- tune_grid(rf_wf,
 
 autoplot(rf_tuner)
 
-# it seems that the number of trees are doesn't increase the model's performance gradually.
-# given that the margin between does values of the hyper parameter 'number of tree' I would chose it using the select_by_one_std_err.
+# Suprisingly rsq decrease above 3 predictors, which raise so concerns until I realise tht I'm not in the domain of linear regression. 
+
+#mtry = 1 -> 2.5: MAE decreases sharply, beyond stabilize around mtry =7 
+
+#rsq = 3 -> theres no doubt that 3 is the best option across nearly all tres number.
 
 
-best_of_trees<- select_by_one_std_err(rf_tuner, trees, metric = "rsq")
+
+best_of_trees<- select_by_one_std_err(rf_tuner,
+                                      trees,
+                                      metric = "rsq")
 # tree= 100
-#mtry= 7
+#mtry= 3
 
-best_of_predictors<- select_by_one_std_err(rf_tuner, mtry, metric = "rsq")
-#tree = 325
-#mtry = 5
+best_of_predictors<- select_by_one_std_err(rf_tuner,
+                                           mtry,
+                                           metric = "rsq")
+#tree = 100
+#mtry = 3
 
-# Looking at the y-axis (R²), the improvement from 100 to 325 trees isn't marginal — 
-# less than 0.02 increase in R² — despite more than tripling the number of trees.
-# In my view, this gain doesn't justify the added computational cost.
-# 
+
+# Note to Self- Always check the Y-axis scale before interpreting visual differences. What appears to be a large gap between options might actually be insignificant/
+
+
 # Therefore, the selected hyperparameters are:
-# trees = 100
-# mtry = 5 
+#tree = 100
+#mtry = 3
 
 hp_rnd_best <- tibble(
   trees = 100,
-  mtry = 5
+  mtry = 3
 )
 
 
@@ -247,8 +374,8 @@ rf_fit <- rf_wf |>
 rf_fit 
 
 # Performance on training set: 
-# Mean of squared residuals: 449.1373
-# Var explained: 64.32%
+#   Mean of squared residuals: 702.5191
+#  % Var explained: 49.83
 
 ## ------Fit the Test Bootstrap --------
 
@@ -275,7 +402,7 @@ boost_spec <- boost_tree(
   trees = tune(),
   
   ## Randomness
-  mtry = 5,  # to help me comparing with Random Forest model and since it is close to the theoretical recommendation when it come to regression sqrt(p)
+  mtry = 3,  # to help me comparing with Random Forest model and since it is close to the theoretical recommendation when it come to regression sqrt(p)
   sample_size = tune() # [0, 1] proportion of random data to use in each tree
 )
 
@@ -468,57 +595,12 @@ Booster_rnds_metrics_com |>
 
 
 
-#Texual Anaylsis
-
-פיצ׳ר אפשרי אשר מגלם ניתוח טקסט הינו ה״מקצוע״ , בערך למחצית מהנתונים יש ג׳וב טייטל.
-
-אני אבחן כאשר מכניסים פי׳צר אשר עומד את המרחק הסמנטי של המקצוע מושגי הנדסה (אשר יהווה פרוקסי לעד כמה המקצוע קשור להנדסה) האם נוכל לשפר את הניבוי של מספר גוסטינג. 
-
-שיטה: DDR
 
 
-```{r}
-#DDR
-
-library(text)
-library(quanteda)
-
-#First things First, Is to make our corpus, done using the jobTitle column.
-
- sum(Tinder_filtered$jobTitle == "unknown")
-#[1] 576 
- 
- nrow(Tinder_filtered) -  sum(Tinder_filtered$jobTitle == "unknown")
-#[1] 335
- 
- #That leaves us with only 335 informative users that hat a job Title 
- 
- 
- ## ------ IMPORTANT -------
-#To proceed with text-based analysis, I will exclude all users without a valid job title (jobTitle == "unknown").
- 
-# However, this significantly reduces the sample size, making direct comparison with previous models invalid, as those were trained on the full dataset.
-# 
-# Because of this, I will restart the entire pipeline—including preprocessing, feature engineering, hyperparameter tuning, modeling, performance evaluation, and VIP analysis—based only on the reduced dataset.
-
- 
- #would run VIP on the previous models last. 
-
- 
- #------- Pre-processing---------- 
- 
-Tinder_filtered_for_txt <- Tinder_filtered |> 
-   # Filtering out the 'unknown' users
-
-  filter(jobTitle != "unknown")  |> 
-   # Assuming that users with 'False' jobTitle are those that manually chose 'false' indicating that they are unemployed 
-   mutate(jobTitle = ifelse(jobTitle == "False",
-                 "unemployed",
-                 jobTitle))
- 
- 
- 
 
 
- 
-```
+
+
+
+
+
