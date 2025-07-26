@@ -322,10 +322,14 @@ rf_grid <-  grid_regular(
   levels = 5
 )
 
-rf_tuner <- tune_grid(rf_wf,
-                      resamples = Tinder_validation_sets,
-                      grid = rf_grid,
-                      metrics = mset_reg)
+
+# rf_tuner <- tune_grid(rf_wf,
+#                       resamples = Tinder_validation_sets,
+#                       grid = rf_grid,
+#                       metrics = mset_reg)
+# saveRDS(rf_tuner, file = "./rds/rf_tuner.rds")
+
+ rf_tuner <- readRDS("./rds/rf_tuner.rds")
 
 # ----- scheming and ploting 
 
@@ -417,11 +421,12 @@ booester_grid <-  expand_grid(
 
 # Tune 
 
-booster_tuner <- tune_grid(booster_wf,
-                      resamples = Tinder_validation_sets,
-                      grid = booester_grid,
-                      metrics = mset_reg)
-
+# booster_tuner <- tune_grid(booster_wf,
+#                       resamples = Tinder_validation_sets,
+#                       grid = booester_grid,
+#                       metrics = mset_reg)
+# saveRDS(booster_tuner,"./rds/booster_tuner")
+booster_tuner <- readRDS("./rds/booster_tuner")
 autoplot(booster_tuner)
 
 
@@ -564,6 +569,61 @@ Booster_rnds_metrics_com |>
   )
 
 #Unfortunately the difference is not significance and is bound within the uncertainty area
+
+
+```
+
+## Variable Explaination 
+
+
+```{r}
+
+#Explained Variables 
+
+#Since the models are pretty agnostic and both "explainatory| method and interchangable, we would use both vip (
+#
+#Variable Importance (VIP)= Quantify how important each feature is to the predictive power of the model.)
+library(DALEX)
+
+library(DALEXtra)
+# In this assignment I wont be using Shap since it only explain one. prediction at a time, and I'm more fond of the model-agnostic's Permutation-based variable importance logic.
+
+
+# ------------------------Random Forest
+
+# We first need to setup an explainer:
+rndf_xplnr <- explain(rf_fit, label = "Random Forest - mtry =3, trees= 100",
+                     data = select(Tinder.train, -nrOfGhostingsAfterInitialMessage),
+                     y = Tinder.train$nrOfGhostingsAfterInitialMessage)
+
+vi_perm <- model_parts(rndf_xplnr, 
+                       B = 20, # Number of permutations
+                       variables = NULL) # specify to only compute for some
+plot(vi_perm, bar_width = 4)
+
+# Based on the permutation-based variable importance (calculated using the increase in RMSE when each variable is shuffled), it appears that no_of_matchs is the most important predictor.
+
+# This finding is intuitive: one cannot ignore messages if they haven’t received any matches—just like in sports, where the number of shots made depends on the number of shots taken. Without attempts, there can be no successes.
+
+plot(model_profile(rndf_xplnr,
+                   variables = "no_of_matches"
+                   ))
+#the same goes for the other top 3 variables: no_of_msgs_received and no_of_days.
+
+#Unfortunately, this method doesn’t provide intuitive or directional insights into how the
+#variables influence the predictions. For example, even though permuting user_age
+#increases the RMSE, I can’t tell whether this is because younger users are more likely to
+#ghost others, or the opposite. The method tells me that the variable matters, but not how it affects the outcome.
+
+
+
+
+
+
+
+
+
+
 
 
 ```
