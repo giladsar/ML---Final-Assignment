@@ -9,16 +9,10 @@ editor: visual
 ---
 
 ## מבוא כללי
-
 שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder.
+את מאגר הנתונים לקחנו מתוך האתר kaggle של המשתמש ashleyxu98, לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר. מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים. סט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה.
+עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה  (nrOfGhostingsAfterInitialMessage)  יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
 
-את מאגר הנתונים לקחנו מתוך האתר kaggle. של המשתמש ashleyxu98 לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר.
-
-מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים.
-
-הסט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה.
-
-עבודה זו תבחן האם הנטיה לעשות למישהו גוסטינג( ניתוק קשר ללא התראה מוקדמת) יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה, או נתונים דמוגרפים כלשהן.
 
 ##Pre-Processing
 
@@ -70,11 +64,11 @@ Tinder_filtered <- Tinder_df  |>
   
   #------ Dealing with weird outliers 
 
-  # Some value in  'ageFilterMax' are set to 1000 (???), which is clearly unrealistic.
-  # Based on my (unfortunate) domain knowledge valid age value should ranges from 1 to 100. 
-  # We'll correct these by replacing 1000 with the next-highest valid age. (assuming this
-  # is an arbitrary error [ while parsing the data maybe] rather than a invalid user. and
-  #review of other user attributes of those instances supports this assumption)
+  # Some value in  'ageFilterMax' are set to 1000 (???), which is clearly unrealistic - will change it to range from 1 to 100. 
+  # We'll correct these by replacing 1000 with the next-highest valid age. (assuming this is an arbitrary error [ while parsing the data maybe] rather than a invalid user. 
+  
+  
+# Review of other user attributes (variable) of those instances supports this assumption)
   
   mutate(ageFilterMax = replace(
     ageFilterMax,
@@ -275,7 +269,7 @@ mset_reg <- metric_set(rsq, mae)
 # Predicting number of ghosting after initial message:
 
 rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
-              data = Tinder_filtered) |> 
+              data = Tinder.train) |> 
    #for our purposes we would omit some demographics that are not of high interests for us,   since we would like to examine patterns across nationalities and times.
   
    #after visually inspecting the data frame I can say the the 'education' is not valid. I  found quite a few professionals with no education (physician fro example) 
@@ -322,10 +316,14 @@ rf_grid <-  grid_regular(
   levels = 5
 )
 
-rf_tuner <- tune_grid(rf_wf,
-                      resamples = Tinder_validation_sets,
-                      grid = rf_grid,
-                      metrics = mset_reg)
+
+ # rf_tuner <- tune_grid(rf_wf,
+ #                      resamples = Tinder_validation_sets,
+ #                      grid = rf_grid,
+ #                     metrics = mset_reg)
+ # saveRDS(rf_tuner, file = "./rds/rf_tuner.rds")
+
+ rf_tuner <- readRDS("./rds/rf_tuner.rds")
 
 # ----- scheming and ploting 
 
@@ -333,9 +331,9 @@ autoplot(rf_tuner)
 
 # Suprisingly rsq decrease above 3 predictors, which raise so concerns until I realise tht I'm not in the domain of linear regression. 
 
-#mtry = 1 -> 2.5: MAE decreases sharply, beyond stabilize around mtry =7 
+#mtry = 1 -> 3: MAE decreases sharply,keeps decreasing beyond, stabilize around mtry =7 
 
-#rsq = 3 -> theres no doubt that 3 is the best option across nearly all tres number.
+#rsq = 3 -> there's no doubt that 3 is the best option across nearly all trees number.
 
 
 
@@ -374,8 +372,8 @@ rf_fit <- rf_wf |>
 rf_fit 
 
 # Performance on training set: 
-#   Mean of squared residuals: 702.5191
-#  % Var explained: 49.83
+          # Mean of squared residuals: 661.771
+          # % Var explained: 52.74
 
 ## ------Fit the Test Bootstrap --------
 
@@ -417,11 +415,12 @@ booester_grid <-  expand_grid(
 
 # Tune 
 
-booster_tuner <- tune_grid(booster_wf,
-                      resamples = Tinder_validation_sets,
-                      grid = booester_grid,
-                      metrics = mset_reg)
-
+# booster_tuner <- tune_grid(booster_wf,
+#                       resamples = Tinder_validation_sets,
+#                       grid = booester_grid,
+#                       metrics = mset_reg)
+# saveRDS(booster_tuner,"./rds/booster_tuner")
+booster_tuner <- readRDS("./rds/booster_tuner")
 autoplot(booster_tuner)
 
 
@@ -439,7 +438,7 @@ select_by_one_std_err(booster_tuner,trees, metric ="rsq")
 
 #   trees tree_depth sample_size .config               
 #   <dbl>      <dbl>       <dbl> <chr>                 
-# 1   200          3         0.9 Preprocessor1_Model582
+# 1   200          3         0.6 Preprocessor1_Model582
 
 
 hp_boost_best <- tibble(
@@ -468,7 +467,7 @@ boost_pred<- predict(boost_fit, Tinder.train) |>
 
 # Performance on training set: 
 
-# RMSE:  3.06
+# RMSE:   3.11
 # Var explained: 99% - probably overfitting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
  
  ## ------Fit the Test Bootstrap --------
@@ -495,15 +494,15 @@ bind_rows(
 
 #   Model    .metric .estimator .estimate
 #   <chr>    <chr>   <chr>          <dbl>
-# boosting	rsq	      standard	0.7363111	
-# rf	      rsq	      standard	0.7044106	
-# boosting	mae	      standard	11.1181626	
-# rf      	mae	      standard	12.8559828	
+# boosting	rsq	      standard	0.677
+# rf	      rsq	      standard	0.658
+# boosting	mae	      standard	12
+# rf      	mae	      standard	13.6
 
 
-# On average, Random Forest predicts the number of ghosting instances with an error of ±12.8, whereas Boosting’s error is ±11.1 - when is comes to MAE boosting is better
+# On average, Random Forest predicts the number of ghosting instances with an error of ±13.6, whereas Boosting’s error is ±12 - when is comes to MAE boosting is better
 
-#R2 of the boosting model indicating that the models predictions accounts for around 73% of the variance in numbers of ghosting messages while the Random Forest model's performances reach only 70% .
+#R2 of the boosting model indicating that the models predictions accounts for around 68% of the variance in numbers of ghosting messages while the Random Forest model's performances reach only 66% .
 
 
 # Winner - Booster! 
@@ -542,10 +541,10 @@ Booster_rnds_metrics_com |>
 
 
 
-#Visually, Boosting appears to have similar variance in MAE compared to Random Forest.
+#Visually, Boosting appears to have smaller variance in MAE compared to Random Forest.
 # However, it's hard to determine whether Random Forest has more bootstrap samples where it outperforms Boosting on MAE.
 
-# In contrast, when looking at R², although the variance is similar between models, Boosting seems to outperforms Random Forest in a greater number of samples.
+# In contrast, when looking at R², although the variance is similar between models, it is hard to tell if Boosting outperforms Random Forest in a greater number of samples.
 
 
 #When considering standard deviation:
@@ -563,7 +562,122 @@ Booster_rnds_metrics_com |>
     .upper = mean_diff + 2 * std_err
   )
 
-#Unfortunately the difference is not significance and is bound within the uncertainty area
+# R2
+
+#   mean_diff std_err .lower .upper
+#       <dbl>   <dbl>  <dbl>  <dbl>
+#    0.00350  0.0991 -0.195  0.202
+
+#mae
+
+  # mean_diff std_err .lower .upper
+  #     <dbl>   <dbl>  <dbl>  <dbl>
+  #    0.381    1.56  -2.74   3.50
+
+#The differences in performance is not significance and is bound within the uncertainty area
+
+
+```
+
+## Variable Explaination 
+
+
+```{r}
+
+#Explained Variables 
+
+
+
+
+library(DALEX)
+
+library(DALEXtra)
+
+# In this assignment I wont be using Shap since it only explain one. prediction at a time, and I'm more fond of the model-agnostic's Permutation-based variable importance logic.
+
+
+# ------------------------Random Forest
+
+# We first need to setup an explainer:
+rndf_xplnr <- explain(rf_fit, label = "Random Forest",
+                     data = select(Tinder.train, -nrOfGhostingsAfterInitialMessage),
+                     y = Tinder.train$nrOfGhostingsAfterInitialMessage)
+
+rnd_vi_perm <- model_parts(rndf_xplnr, 
+                       B = 20, # Number of permutations
+                       variables = NULL) # specify to only compute for some
+plot(rnd_vi_perm, bar_width = 4)
+
+# Based on the permutation-based variable importance (calculated using the increase in RMSE when each variable is shuffled), it appears that no_of_matchs is the most important predictor.
+
+# This finding is intuitive: one cannot ignore messages if they haven’t received any matches—just like in sports, where the number of shots made depends on the number of shots taken. Without attempts, there can be no successes.
+
+#Unfortunately, permutation-based variable importance doesn’t  provide directional insights into how the variables influence the predictions. For example, even though permuting user_age increases the RMSE, I can’t tell whether this is because younger users are more likely to ghost others, or the opposite. The method tells me that the variable matters, but not how it affects the outcome.
+
+
+#Using model_profile to asses the direction of the contribution change across variables values :
+
+plot(model_profile(rndf_xplnr,
+                   variables = "no_of_matches"
+                   ))
+
+#the same goes for the other top 3 variables: no_of_msgs_received and no_of_days.
+
+plot(model_profile(rndf_xplnr,
+                   variables = "no_of_days"
+                   ))
+
+# no_of_days- it seems that the ghosting tendency have a weird trend when it comes to the number of days using the platform.
+
+plot(model_profile(rndf_xplnr,
+                   variables = "nrOfConversations"
+                   ))
+
+
+
+
+
+
+
+
+#------------------- Boosting ---------------------
+
+booster_xplnr <- explain(boost_fit, label = "Boosting",
+                     data = select(Tinder.train, -nrOfGhostingsAfterInitialMessage),
+                     y = Tinder.train$nrOfGhostingsAfterInitialMessage)
+
+
+#Variable importance 
+
+boost_vi_perm <- model_parts(booster_xplnr, 
+                       B = 20, # Number of permutations
+                       variables = NULL) # specify to only compute for some
+plot(boost_vi_perm, bar_width = 4)
+
+#the variable that contributed the most for the model performnce is, again, no_of_matches. However,the other 2 top variable changes to medianConversationLengthInDays and percentOfOneMesssageConversations
+
+#medianConversationLengthInDays is pretty interesting, let׳s examine the relation between this variable to y:
+
+
+
+plot(model_profile(booster_xplnr,
+                   variables = "percentOfOneMessageConversations"
+                   ))
+
+#so there's a negative monotonic trend which indicating when raising hte percentage of one message convos the corresponding averages prediction decrease
+
+#WHAT? - it looks that very deviants instances make the plot no so informative. let's see what happen if we bound the x axis 
+
+plotRange_percentage_instance<-sum(Tinder.train$medianConversationLengthInDays<1)/nrow(Tinder.train) *100
+
+#96.875% of the users in the training set has medianConversationLengthInDays<1
+plot(model_profile(booster_xplnr,
+                   variables = "medianConversationLengthInDays"
+                   )) + xlim(0, 1) 
+
+#Theoretically it make sense the the relation is negative monotonic one, not answering other first message is cloesly related to having 0 count of conversation - ensuming that the a day of conversation starts when the first REPLY is being sent 
+
+
 
 
 ```
