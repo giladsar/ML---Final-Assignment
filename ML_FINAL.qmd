@@ -14,7 +14,7 @@ editor: visual
 עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה  (nrOfGhostingsAfterInitialMessage)  יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
 
 
-##Pre-Processing
+## Pre-Processing
 
 ```{r}
 #Packages loading:
