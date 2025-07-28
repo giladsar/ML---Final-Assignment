@@ -442,6 +442,7 @@ autoplot(booster_tuner)
 select_by_one_std_err(booster_tuner,sample_size, metric ="rsq")
 select_by_one_std_err(booster_tuner,trees, metric ="rsq")
 
+
 #Based on this, it appears that the optimal tree depth is 3. 
 
 #it seems that best trees and sample_size both indicating 
@@ -454,7 +455,7 @@ select_by_one_std_err(booster_tuner,trees, metric ="rsq")
 hp_boost_best <- tibble(
   trees = 200,
   tree_depth = 3,
-  sample_size = 0.9
+  sample_size = 0.6
 )
 
 ##------- Training and Fitting -------
@@ -467,7 +468,7 @@ boost_fit
 boost_pred<- predict(boost_fit, Tinder.train) |> 
   bind_cols(Tinder.train)
 
- rmse(boost_pred,
+ mae(boost_pred,
      truth =nrOfGhostingsAfterInitialMessage ,
      estimate = .pred)
  rsq(boost_pred,
@@ -477,8 +478,8 @@ boost_pred<- predict(boost_fit, Tinder.train) |>
 
 # Performance on training set: 
 
-# RMSE:   3.11
-# Var explained: 99% - probably overfitting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+# MAE:   3.04
+# R2: 99% 
  
  ## ------Fit the Test Bootstrap --------
 
@@ -491,8 +492,10 @@ booster_test_comp <- fit_resamples(boost_fit,
 Tinder.test_rndf.pred <- augment(rf_fit, Tinder.test)
 Tinder.test_boost.pred <- augment(boost_fit, Tinder.test)
 
+library(knitr)
 
-bind_rows(
+
+test_set_performance_boost_rnf <-bind_rows(
   "rf" = Tinder.test_rndf.pred,
   "boosting" = Tinder.test_boost.pred, 
   
@@ -501,13 +504,16 @@ bind_rows(
   group_by(Model) |> 
   mset_reg(nrOfGhostingsAfterInitialMessage, .pred)
 
+kable(test_set_performance_boost_rnf,
+      caption = "Performance Metrics",
+      digits = 3)
 
 #   Model    .metric .estimator .estimate
 #   <chr>    <chr>   <chr>          <dbl>
-# boosting	rsq	      standard	0.677
-# rf	      rsq	      standard	0.658
-# boosting	mae	      standard	12
-# rf      	mae	      standard	13.6
+# boosting	rsq	      standard	0.657
+# rf	      rsq	      standard	0.576
+# boosting	mae	      standard	12.8
+# rf      	mae	      standard	14.5
 
 
 # On average, Random Forest predicts the number of ghosting instances with an error of ±13.6, whereas Boosting’s error is ±12 - when is comes to MAE boosting is better
