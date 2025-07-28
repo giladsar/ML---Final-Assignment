@@ -183,6 +183,7 @@ Tinder_jobTitle_WEmodel <- load_embeddings(
   format = "rds",
   dir= "./rds")
 
+
 # ./rds/glove.6B.50d.rds were created 
 
 #Using this model, we would embedd our corpus (Tinder job titles):
