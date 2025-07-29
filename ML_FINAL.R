@@ -1,20 +1,6 @@
----
-title: "מטלה מסכמת- עקרונות יסוד של למידת מכונה"
-author: "גלעד סרוסי ונעם גיל-עדי"
-format: docx
-lang: he
-dir: rtl
-
-editor: visual
----
-
-## מבוא כללי
-
-שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder. את מאגר הנתונים לקחנו מתוך האתר kaggle של המשתמש ashleyxu98, לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר. מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים. סט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה. עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה (nrOfGhostingsAfterInitialMessage) יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
 
 ## Pre-Processing
 
-```{r}
 #Packages loading:
 library(tidyverse)
 library(tidymodels)
@@ -108,9 +94,7 @@ Tinder_filtered <- Tinder_filtered |>
 # Since my models of Interest are not an OLS/GKM ones, and given that I do want to interpret the results of such modeling, I would not conduct any dimension reduction method. 
 # My models of choice would be Boosting and Random Forest. 
 
-```
 
-```{r}
 
 #Adding 'engineer' feature! - the Cosine squish to engineer in jobTitle
 
@@ -222,12 +206,11 @@ Tinder_filtered_for_txt_with_cosine <- Tinder_filtered_for_txt |>
 
 #That's leaving us with 321 users! 
 
-```
 
-## Modeling
 
-```{r}
-# Data Splitting (70%):
+# Modeling
+
+## Data Splitting (70%):
 set.seed(130597)
 splits <- initial_split(Tinder_filtered_for_txt_with_cosine,
                         prop = 0.7)
@@ -601,11 +584,10 @@ Booster_rnds_metrics_com |>
 #The differences in performance is not significance and is bound within the uncertainty area
 
 
-```
+
 
 ## Variable Explaination
 
-```{r}
 
 #Explained Variables 
 
@@ -703,4 +685,3 @@ plot(model_profile(booster_xplnr,
 
 
 
-```
