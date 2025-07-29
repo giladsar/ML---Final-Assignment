@@ -268,7 +268,7 @@ rec <- recipe(nrOfGhostingsAfterInitialMessage ~ .,
   
   
 
-# -------------------------  Spec- Random Forest ------------------
+# -------------------------  Random Forest ------------------
 
 rf_spec <- rand_forest(
   mode = "regression",
@@ -377,7 +377,7 @@ rf_test_comp_op2 <- rf_wf |>
 
 
 
-#--------------------------  Spec- Booster 
+#--------------------------  Booster  -----------------------
 boost_spec <- boost_tree(
   mode = "regression",
   engine = "xgboost",
@@ -463,7 +463,7 @@ boost_pred<- predict(boost_fit, Tinder.train) |>
 # Performance on training set: 
 
 # MAE:   3.04
-# R2: 99% 
+# R2: 0.99 
  
  ## ------Fit the Test Bootstrap --------
 
@@ -480,7 +480,7 @@ booster_test_comp_op2 <-  booster_wf |>
                 metrics = mset_reg)
 
 
-#--------------- Comparison - Full Test Set
+#--------------- Comparison  ---------------- 
 Tinder.test_rndf.pred <- augment(rf_fit, Tinder.test)
 Tinder.test_boost.pred <- augment(boost_fit, Tinder.test)
 
@@ -586,11 +586,7 @@ Booster_rnds_metrics_com |>
 
 
 
-## Variable Explaination
-
-
-#Explained Variables 
-
+#------------------- VIP ---------------------
 
 
 
@@ -645,7 +641,7 @@ plot(model_profile(rndf_xplnr,
 
 
 
-#------------------- Boosting ---------------------
+#------------------- Boosting
 
 booster_xplnr <- explain(boost_fit, label = "Boosting",
                      data = select(Tinder.train, -nrOfGhostingsAfterInitialMessage),
@@ -683,5 +679,153 @@ plot(model_profile(booster_xplnr,
 #Theoretically it make sense the the relation is negative monotonic one, not answering other first message is cloesly related to having 0 count of conversation - ensuming that the a day of conversation starts when the first REPLY is being sent 
 
 
+#--------------- Lasso Rigression ------------------
+
+lasso_spec <- linear_reg(
+  mode = "regression", engine = "glmnet", 
+  penalty = tune(), mixture = 1
+)
+
+lasso_wf <- workflow(preprocessor = rec, spec = lasso_spec)
+
+#Setting the grid for the penalization 
+
+lasso_grid <- grid_regular(
+  penalty(range = c(-2, 7)),
+  
+  levels = 20
+)
+
+# Tune the model
+lasso_tuned <- tune_grid(
+  lasso_wf,
+  resamples = Tinder_validation_sets,
+  grid = lasso_grid,
+  metrics = mset_reg
+)
 
 
+
+autoplot(lasso_tuned) + 
+  scale_x_continuous(transform = scales::transform_log(),
+                     breaks = scales::breaks_log(n = 10),
+                     labels = scales::label_number(big.mark = ",")) + 
+  theme(axis.text.x = element_text(angle = 20))
+#I have a hinge that maybe I should include smaller values
+
+
+lasso_regrid <- grid_regular(
+  penalty(range = c(-4, 7)),
+  
+  levels = 40
+)
+
+lasso_retuned <- tune_grid(
+  lasso_wf,
+  resamples = Tinder_validation_sets,
+  grid = lasso_regrid,
+  metrics = mset_reg
+)
+
+
+autoplot(lasso_retuned) + 
+  scale_x_continuous(transform = scales::transform_log(),
+                     breaks = scales::breaks_log(n = 10),
+                     labels = scales::label_number(big.mark = ",")) + 
+  theme(axis.text.x = element_text(angle = 20))
+
+
+(penalty_hp <- select_by_one_std_err(lasso_retuned,
+                                    penalty,
+                                    metric = 'rsq'))
+
+#it's seems that no penalty is needed- However,  I would go with the first tune results for the penalty to take action -
+
+(penalty_hp <- select_best(lasso_retuned, metric = "rsq"))
+
+
+#   0.464 Preprocessor1_Model14
+
+#now let's fit ! 
+
+##------- Training and Fitting -------
+library(glmnet)
+
+lasso_fit <- lasso_wf |>
+  finalize_workflow(parameters = penalty_hp) |> 
+  fit(data = Tinder.train)
+lasso_fit 
+
+lasso_pred<- predict(lasso_fit, Tinder.train) |> 
+  bind_cols(Tinder.train)
+
+mae(lasso_pred,
+    truth =nrOfGhostingsAfterInitialMessage ,
+    estimate = .pred)
+
+
+rsq(lasso_pred,
+    truth =nrOfGhostingsAfterInitialMessage ,
+    estimate = .pred)
+
+
+
+# Performance on training set: 
+
+
+
+# MAE:    12.5
+# R2: 0.699 
+
+#based on the training set it seems that the rsq is smalls then of the esemble trees model,
+#this makes sense because it penalize the training set model to fit better OOB sets 
+
+#let's check the performance on test set: 
+
+
+Tinder.test_lasso.pred <- augment(lasso_fit, Tinder.test) 
+
+
+lasso_results <-mset_reg(Tinder.test_lasso.pred,
+           nrOfGhostingsAfterInitialMessage,
+           .pred)
+
+kable(lasso_results,
+      caption = "Performance Metrics",
+      digits = 3)
+
+kable(Tinder.test_lasso.pred)
+
+#not even close to assemble trees results :
+
+# MAE  =    16.854
+# R2 =      0.607
+
+
+#using Mattan's plot function to see what going on: which variable has been zero-ed
+plot_glmnet_coef <- function(mod, s = 0, show_intercept = FALSE) {
+  b <- glmnet::coef.glmnet(mod, s = c(s, 0), exact = FALSE) |> 
+    as.matrix() |> as.data.frame() |> 
+    tibble::rownames_to_column("Coef")
+  
+  if (isFALSE(show_intercept)) {
+    b <- b |> filter(Coef != "(Intercept)")
+  }
+  
+  ggplot2::ggplot(b, ggplot2::aes(Coef, s1)) + 
+    ggplot2::geom_hline(yintercept = 0) + 
+    ggplot2::geom_point(ggplot2::aes(shape = s1 == 0), fill = "red", size = 2, 
+                        show.legend = c(shape = TRUE)) + 
+    ggplot2::scale_shape_manual(NULL, 
+                                breaks = c(FALSE, TRUE), values = c(16, 24),
+                                labels = c("none-0", "0"), 
+                                limits = c(FALSE, TRUE)) + 
+    ggplot2::scale_x_discrete(guide = ggplot2::guide_axis(angle = 30)) + 
+    ggplot2::coord_cartesian(ylim = range(b[,-1])) + 
+    ggplot2::labs(y = "Coef", x = NULL) + 
+    ggplot2::ggtitle(bquote(lambda==.(s)))
+}
+lasso_eng <- extract_fit_engine(lasso_fit)
+coef(lasso_eng, s = penalty_hp$penalty)   
+
+plot_glmnet_coef(lasso_eng, s= penalty_hp$penalty)
