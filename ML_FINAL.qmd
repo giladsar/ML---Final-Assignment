@@ -387,9 +387,18 @@ rsq(rf_pred, truth = nrOfGhostingsAfterInitialMessage, estimate = .pred)
 
 ## ------Fit the Test Bootstrap --------
 
+
 rf_test_comp <- fit_resamples(rf_fit,
                             resamples = Tinder_comparison_sets,
                             metrics = mset_reg)
+
+#Wait should this be done on the comparisons sets WITHOUT(!) training the model on the training set????
+
+rf_test_comp_op2 <- rf_wf |> 
+  finalize_workflow(parameters = hp_rnd_best) |> 
+  fit_resamples(resamples = Tinder_comparison_sets,
+                metrics = mset_reg)
+
 
 
 
@@ -487,6 +496,14 @@ booster_test_comp <- fit_resamples(boost_fit,
                             resamples = Tinder_comparison_sets,
                             metrics = mset_reg)
 
+ 
+#Same Here,  should this done on the comparisons sets WITHOUT(!) training the model of the training set?
+
+booster_test_comp_op2 <-  booster_wf |>
+  finalize_workflow(parameters = hp_boost_best) |> 
+  fit_resamples(resamples = Tinder_comparison_sets,
+                metrics = mset_reg)
+
 
 #--------------- Comparison - Full Test Set
 Tinder.test_rndf.pred <- augment(rf_fit, Tinder.test)
@@ -528,8 +545,8 @@ kable(test_set_performance_boost_rnf,
 
 
 Booster_rnds_metrics_com <- bind_rows(
-  "rf" = collect_metrics(rf_test_comp, summarize = FALSE),
-  "boosting" = collect_metrics(booster_test_comp, summarize = FALSE),
+  "rf" = collect_metrics(rf_test_comp_op2, summarize = FALSE),
+  "boosting" = collect_metrics(booster_test_comp_op2, summarize = FALSE),
   
   .id = "Model"
 ) |>
@@ -552,7 +569,6 @@ Booster_rnds_metrics_com |>
                show.legend = FALSE) + 
   geom_point() +
   geom_line(aes(group = id, color = best_model))
-
 
 
 
