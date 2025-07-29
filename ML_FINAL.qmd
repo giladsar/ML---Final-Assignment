@@ -9,10 +9,8 @@ editor: visual
 ---
 
 ## מבוא כללי
-שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder.
-את מאגר הנתונים לקחנו מתוך האתר kaggle של המשתמש ashleyxu98, לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר. מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים. סט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה.
-עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה  (nrOfGhostingsAfterInitialMessage)  יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
 
+שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder. את מאגר הנתונים לקחנו מתוך האתר kaggle של המשתמש ashleyxu98, לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר. מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים. סט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה. עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה (nrOfGhostingsAfterInitialMessage) יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
 
 ## Pre-Processing
 
@@ -111,7 +109,6 @@ Tinder_filtered <- Tinder_filtered |>
 # My models of choice would be Boosting and Random Forest. 
 
 ```
-
 
 ```{r}
 
@@ -226,11 +223,6 @@ Tinder_filtered_for_txt_with_cosine <- Tinder_filtered_for_txt |>
 #That's leaving us with 321 users! 
 
 ```
-
-
-
-
-
 
 ## Modeling
 
@@ -611,8 +603,7 @@ Booster_rnds_metrics_com |>
 
 ```
 
-## Variable Explaination 
-
+## Variable Explaination
 
 ```{r}
 
@@ -656,7 +647,7 @@ plot(model_profile(rndf_xplnr,
 #the same goes for the other top 3 variables: no_of_msgs_received and no_of_days.
 
 plot(model_profile(rndf_xplnr,
-                   variables = "no_of_days"
+                   variables = "no_of_msgs_received"
                    ))
 
 # no_of_days- it seems that the ghosting tendency have a weird trend when it comes to the number of days using the platform.
@@ -713,15 +704,3 @@ plot(model_profile(booster_xplnr,
 
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
