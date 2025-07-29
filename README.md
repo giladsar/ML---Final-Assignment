@@ -46,7 +46,7 @@ The report is the main deliverable and is limited to six pages. It includes:
 2.  **Methods and results** – detailed description of preprocessing, feature engineering, hyper‑parameter tuning, model training, cross‑validation, comparison of models on relevant metrics (e.g., accuracy, F1, AUC) and variable importance/SHAP analysis.
 3.  **Discussion** – interpretation of the findings and reflections on differences (or similarities) between models.
 
-### Analysis script (`ML_FINAL.qmd`)
+### Analysis script (`ML_FINAL.R`)
 
 The script can be executed to reproduce the analysis. It is organised as follows:
 
@@ -65,7 +65,7 @@ To run the analysis from a fresh R session:
 install.packages(c("tidyverse", "tidymodels", "ranger", "xgboost", "DALEX", "vip"))
 
 # Source the script
-source("ML_FINAL.qmd")
+source("ML_FINAL.R")
 ```
 
 All preprocessing steps are performed within resampling folds to avoid data leakage. Results should be reproducible on any system with R 4.0 or higher.
@@ -76,7 +76,7 @@ All preprocessing steps are performed within resampling folds to avoid data leak
 
 2.  Ensure that `Tinder_Data_v3_Clean_Edition.csv` is present in the working directory.
 
-3.  Open the R script (`ML_FINAL.qmd`) and run it. This will generate the models and save figures used in the report.
+3.  Open the R script (`ML_FINAL.R`) and run it. This will generate the models and save figures used in the report.
 
 4.  Open `ML_FINAL.docx` for the full write‑up of methods and results.
 
