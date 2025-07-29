@@ -1,22 +1,6 @@
----
-title: "מטלה מסכמת- עקרונות יסוד של למידת מכונה"
-author: "גלעד סרוסי ונעם גיל-עדי"
-format: docx
-lang: he
-dir: rtl
-
-editor: visual
----
-
-## מבוא כללי
-שאלה המחקר שלנו מתייחסת לדפוסי פעילות לש משתמשים באפליקציות היכרויות. באופן ספציפי Tinder.
-את מאגר הנתונים לקחנו מתוך האתר kaggle של המשתמש ashleyxu98, לפיו הנתונים נאספו מהאתר https://www.swipestats.io/ באישור מתאים מבעל האתר. מטרת עבודה זו להוות התנסות ראשונית עם נתונים הלקוחים מתוך אפליקציית היכרויות, ולבחון האם נוכל לזהות דפוסים התנהגותיים מתוך הנתונים. סט הנתונים כולל מידע שנאסף מ-1,209 משתמשים באפליקציית טינדר, ומכיל 31 עמודות המתארות פרטים דמוגרפיים והתנהגותיים: למשל מספר פתיחות של האפליקציה (sum_app_opens) מספר ימים בהם המשתמש פעיל (no_of_days) מספר ההתכתבויות הכללי (nrOfConversations) וכדומה.
-עבודה זו תבחן האם מספר פעמי הגוסטינג, ניתוק קשר ללא התראה מוקדמת, לאחר קבלת ההודעה הראשונה  (nrOfGhostingsAfterInitialMessage)  יכולה להיות מנובאת מהתנהגויות אחרות בפלטפורמה ונתונים דמוגרפים.
-
 
 ## Pre-Processing
 
-```{r}
 #Packages loading:
 library(tidyverse)
 library(tidymodels)
@@ -110,10 +94,7 @@ Tinder_filtered <- Tinder_filtered |>
 # Since my models of Interest are not an OLS/GKM ones, and given that I do want to interpret the results of such modeling, I would not conduct any dimension reduction method. 
 # My models of choice would be Boosting and Random Forest. 
 
-```
 
-
-```{r}
 
 #Adding 'engineer' feature! - the Cosine squish to engineer in jobTitle
 
@@ -183,6 +164,7 @@ Tinder_jobTitle_WEmodel <- load_embeddings(
   format = "rds",
   dir= "./rds")
 
+
 # ./rds/glove.6B.50d.rds were created 
 
 #Using this model, we would embedd our corpus (Tinder job titles):
@@ -224,17 +206,11 @@ Tinder_filtered_for_txt_with_cosine <- Tinder_filtered_for_txt |>
 
 #That's leaving us with 321 users! 
 
-```
 
 
+# Modeling
 
-
-
-
-## Modeling
-
-```{r}
-# Data Splitting (70%):
+## Data Splitting (70%):
 set.seed(130597)
 splits <- initial_split(Tinder_filtered_for_txt_with_cosine,
                         prop = 0.7)
@@ -371,15 +347,33 @@ rf_fit <- rf_wf |>
   fit(data = Tinder.train)
 rf_fit 
 
+rf_pred <- predict(rf_fit, new_data = Tinder.train) |> 
+  bind_cols(Tinder.train)
+
+mae(rf_pred, truth = nrOfGhostingsAfterInitialMessage, estimate = .pred)
+#1 mae     standard         6.19
+
+rsq(rf_pred, truth = nrOfGhostingsAfterInitialMessage, estimate = .pred)
+# 1 rsq     standard       0.940
+
 # Performance on training set: 
-          # Mean of squared residuals: 661.771
-          # % Var explained: 52.74
+          # MAE: 6.19
+          # R2: 0.94
 
 ## ------Fit the Test Bootstrap --------
+
 
 rf_test_comp <- fit_resamples(rf_fit,
                             resamples = Tinder_comparison_sets,
                             metrics = mset_reg)
+
+#Wait should this be done on the comparisons sets WITHOUT(!) training the model on the training set????
+
+rf_test_comp_op2 <- rf_wf |> 
+  finalize_workflow(parameters = hp_rnd_best) |> 
+  fit_resamples(resamples = Tinder_comparison_sets,
+                metrics = mset_reg)
+
 
 
 
@@ -432,6 +426,7 @@ autoplot(booster_tuner)
 select_by_one_std_err(booster_tuner,sample_size, metric ="rsq")
 select_by_one_std_err(booster_tuner,trees, metric ="rsq")
 
+
 #Based on this, it appears that the optimal tree depth is 3. 
 
 #it seems that best trees and sample_size both indicating 
@@ -444,7 +439,7 @@ select_by_one_std_err(booster_tuner,trees, metric ="rsq")
 hp_boost_best <- tibble(
   trees = 200,
   tree_depth = 3,
-  sample_size = 0.9
+  sample_size = 0.6
 )
 
 ##------- Training and Fitting -------
@@ -457,7 +452,7 @@ boost_fit
 boost_pred<- predict(boost_fit, Tinder.train) |> 
   bind_cols(Tinder.train)
 
- rmse(boost_pred,
+ mae(boost_pred,
      truth =nrOfGhostingsAfterInitialMessage ,
      estimate = .pred)
  rsq(boost_pred,
@@ -467,8 +462,8 @@ boost_pred<- predict(boost_fit, Tinder.train) |>
 
 # Performance on training set: 
 
-# RMSE:   3.11
-# Var explained: 99% - probably overfitting !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+# MAE:   3.04
+# R2: 99% 
  
  ## ------Fit the Test Bootstrap --------
 
@@ -476,13 +471,23 @@ booster_test_comp <- fit_resamples(boost_fit,
                             resamples = Tinder_comparison_sets,
                             metrics = mset_reg)
 
+ 
+#Same Here,  should this done on the comparisons sets WITHOUT(!) training the model of the training set?
+
+booster_test_comp_op2 <-  booster_wf |>
+  finalize_workflow(parameters = hp_boost_best) |> 
+  fit_resamples(resamples = Tinder_comparison_sets,
+                metrics = mset_reg)
+
 
 #--------------- Comparison - Full Test Set
 Tinder.test_rndf.pred <- augment(rf_fit, Tinder.test)
 Tinder.test_boost.pred <- augment(boost_fit, Tinder.test)
 
+library(knitr)
 
-bind_rows(
+
+test_set_performance_boost_rnf <-bind_rows(
   "rf" = Tinder.test_rndf.pred,
   "boosting" = Tinder.test_boost.pred, 
   
@@ -491,13 +496,16 @@ bind_rows(
   group_by(Model) |> 
   mset_reg(nrOfGhostingsAfterInitialMessage, .pred)
 
+kable(test_set_performance_boost_rnf,
+      caption = "Performance Metrics",
+      digits = 3)
 
 #   Model    .metric .estimator .estimate
 #   <chr>    <chr>   <chr>          <dbl>
-# boosting	rsq	      standard	0.677
-# rf	      rsq	      standard	0.658
-# boosting	mae	      standard	12
-# rf      	mae	      standard	13.6
+# boosting	rsq	      standard	0.657
+# rf	      rsq	      standard	0.576
+# boosting	mae	      standard	12.8
+# rf      	mae	      standard	14.5
 
 
 # On average, Random Forest predicts the number of ghosting instances with an error of ±13.6, whereas Boosting’s error is ±12 - when is comes to MAE boosting is better
@@ -512,8 +520,8 @@ bind_rows(
 
 
 Booster_rnds_metrics_com <- bind_rows(
-  "rf" = collect_metrics(rf_test_comp, summarize = FALSE),
-  "boosting" = collect_metrics(booster_test_comp, summarize = FALSE),
+  "rf" = collect_metrics(rf_test_comp_op2, summarize = FALSE),
+  "boosting" = collect_metrics(booster_test_comp_op2, summarize = FALSE),
   
   .id = "Model"
 ) |>
@@ -536,7 +544,6 @@ Booster_rnds_metrics_com |>
                show.legend = FALSE) + 
   geom_point() +
   geom_line(aes(group = id, color = best_model))
-
 
 
 
@@ -577,12 +584,10 @@ Booster_rnds_metrics_com |>
 #The differences in performance is not significance and is bound within the uncertainty area
 
 
-```
-
-## Variable Explaination 
 
 
-```{r}
+## Variable Explaination
+
 
 #Explained Variables 
 
@@ -624,7 +629,7 @@ plot(model_profile(rndf_xplnr,
 #the same goes for the other top 3 variables: no_of_msgs_received and no_of_days.
 
 plot(model_profile(rndf_xplnr,
-                   variables = "no_of_days"
+                   variables = "no_of_msgs_received"
                    ))
 
 # no_of_days- it seems that the ghosting tendency have a weird trend when it comes to the number of days using the platform.
@@ -676,19 +681,6 @@ plot(model_profile(booster_xplnr,
                    )) + xlim(0, 1) 
 
 #Theoretically it make sense the the relation is negative monotonic one, not answering other first message is cloesly related to having 0 count of conversation - ensuming that the a day of conversation starts when the first REPLY is being sent 
-
-
-
-
-```
-
-
-
-
-
-
-
-
 
 
 
