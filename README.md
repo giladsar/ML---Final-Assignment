@@ -32,9 +32,9 @@ The full cleaned dataset is stored in `Tinder_Data_v3_Clean_Edition.csv` at the 
 
 .  
 ├── README.md # This file  
-├── report.docx # Word report of the project (6 pages maximum)  
-├── analysis.R # R script containing data import, preprocessing, modelling and evaluation  
-├── Tinder_Data_v3_Clean_Edition.csv # Dataset used in the analysis  
+├── ML_FINAL.docx # Word report of the project (6 pages maximum)  
+├── ML_FINAL.R # R script containing data import, preprocessing, modelling and evaluation  
+├── data/tinder-data/Tinder_Data_v3_Clean_Edition.csv # Dataset used in the analysis  
 └── figures/ # Folder for generated figures and plots
 ```
 
